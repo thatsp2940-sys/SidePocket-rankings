@@ -7,7 +7,6 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxanhpb21wZXJzcHh4cGpsbXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDM5MTEsImV4cCI6MjA5NjUxOTkxMX0.gVUcSSkbgXxf2eZoyopOri5lVSb6am0-ck_sz0ij9Rc'
 )
 
-// ── Config ────────────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = 'SidePocket2025'
 
 const FINISH_POINTS = {
@@ -16,28 +15,20 @@ const FINISH_POINTS = {
 }
 const FINISH_OPTIONS = Object.keys(FINISH_POINTS)
 
-// ── Colours ───────────────────────────────────────────────────────────────────
 const C = {
   gold: '#C9A84C', goldLight: '#f0d88a', goldDim: '#C9A84C33',
   black: '#0a0a0a', dark: '#111', mid: '#161616', card: '#131313',
   border: '#1f1f1f', border2: '#2a2a2a',
   text: '#e0e0e0', muted: '#555', faint: '#333',
-  green: '#2ecc71', greenDim: '#1a4731',
-  silver: '#8C9BAB', bronze: '#c4875a',
+  green: '#2ecc71', silver: '#8C9BAB', bronze: '#c4875a',
+  whatsapp: '#25D366',
 }
 
-// ── Rank helpers ──────────────────────────────────────────────────────────────
 function rankColor(rank) {
   if (rank === 1) return C.gold
   if (rank === 2) return C.silver
   if (rank === 3) return C.bronze
   return C.muted
-}
-function rankBg(rank) {
-  if (rank === 1) return '#1a1500'
-  if (rank === 2) return '#0f1215'
-  if (rank === 3) return '#110d09'
-  return C.card
 }
 function finishColor(finish) {
   if (finish === 'Winner')    return C.gold
@@ -47,7 +38,6 @@ function finishColor(finish) {
   return C.muted
 }
 
-// ── Compute rankings ──────────────────────────────────────────────────────────
 function computeRankings(players, results) {
   const map = {}
   players.forEach(p => {
@@ -58,7 +48,7 @@ function computeRankings(players, results) {
     map[r.player_name].points  += r.points || 0
     map[r.player_name].played  += 1
     if (r.finish === 'Winner')    map[r.player_name].wins     += 1
-    if (r.finish === 'Runner-Up') map[r.player_name].runnerUps+= 1
+    if (r.finish === 'Runner-Up') map[r.player_name].runnerUps += 1
     if (['Winner','Runner-Up','3rd Place','4th Place'].includes(r.finish))
       map[r.player_name].top4 += 1
   })
@@ -67,7 +57,6 @@ function computeRankings(players, results) {
   )
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
 function useToast() {
   const [toast, setToast] = useState(null)
   const show = (msg, type = 'success') => {
@@ -77,32 +66,58 @@ function useToast() {
   return [toast, show]
 }
 
+// ── Countdown hook ────────────────────────────────────────────────────────────
+function useCountdown(targetDate) {
+  const [timeLeft, setTimeLeft] = useState(null)
+
+  useEffect(() => {
+    if (!targetDate) { setTimeLeft(null); return }
+    const calc = () => {
+      const diff = new Date(targetDate) - new Date()
+      if (diff <= 0) { setTimeLeft({ expired: true }); return }
+      setTimeLeft({
+        days:    Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours:   Math.floor((diff / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((diff / (1000 * 60)) % 60),
+        seconds: Math.floor((diff / 1000) % 60),
+      })
+    }
+    calc()
+    const id = setInterval(calc, 1000)
+    return () => clearInterval(id)
+  }, [targetDate])
+
+  return timeLeft
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [tab,         setTab]         = useState('rankings')
   const [players,     setPlayers]     = useState([])
   const [results,     setResults]     = useState([])
+  const [settings,    setSettings]    = useState({})
   const [loading,     setLoading]     = useState(true)
   const [isAdmin,     setIsAdmin]     = useState(false)
   const [toast,       showToast]      = useToast()
 
-  // ── Fetch data ──────────────────────────────────────────────────────────
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: p }, { data: r }] = await Promise.all([
+    const [{ data: p }, { data: r }, { data: s }] = await Promise.all([
       supabase.from('players').select('*').order('created_at'),
       supabase.from('tournament_results').select('*').order('date', { ascending: false }),
+      supabase.from('settings').select('*'),
     ])
     setPlayers(p || [])
     setResults(r || [])
+    const sMap = {}
+    ;(s || []).forEach(row => { sMap[row.key] = row.value })
+    setSettings(sMap)
     setLoading(false)
   }
 
   const ranked = useMemo(() => computeRankings(players, results), [players, results])
-
-  // ── Group results by tournament ─────────────────────────────────────────
   const tournaments = useMemo(() => {
     const map = {}
     results.forEach(r => {
@@ -113,7 +128,6 @@ export default function App() {
     return Object.values(map).sort((a, b) => new Date(b.date) - new Date(a.date))
   }, [results])
 
-  // ── Screen ──────────────────────────────────────────────────────────────
   if (loading) return <LoadingScreen />
 
   return (
@@ -126,7 +140,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 24, color: C.gold }}>◈</span>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '0.15em', color: '#fff' }}>SIDEPOCKET</div>
+                <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', color: '#fff' }}>SidePocket</div>
                 <div style={{ fontSize: 9, letterSpacing: '0.2em', color: C.muted, marginTop: 1 }}>NEWCASTLE · KZN</div>
               </div>
             </div>
@@ -134,7 +148,6 @@ export default function App() {
               LIVE RANKINGS
             </div>
           </div>
-          {/* Nav */}
           <div style={{ display: 'flex', gap: 0 }}>
             {[['rankings','Rankings'],['tournaments','Tournaments'],['admin', isAdmin ? 'Admin ✓' : 'Admin']].map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} style={{
@@ -151,11 +164,11 @@ export default function App() {
 
       {/* Content */}
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '24px 16px 80px' }}>
-        {tab === 'rankings'    && <RankingsTab ranked={ranked} totalTournaments={tournaments.length} totalPlayers={players.length} />}
+        {tab === 'rankings'    && <RankingsTab ranked={ranked} totalTournaments={tournaments.length} totalPlayers={players.length} settings={settings} />}
         {tab === 'tournaments' && <TournamentsTab tournaments={tournaments} />}
         {tab === 'admin'       && (
           isAdmin
-            ? <AdminTab players={players} results={results} onRefresh={fetchAll} showToast={showToast} />
+            ? <AdminTab players={players} results={results} settings={settings} onRefresh={fetchAll} showToast={showToast} />
             : <LoginScreen onLogin={(pw) => {
                 if (pw === ADMIN_PASSWORD) { setIsAdmin(true); showToast('Admin access granted') }
                 else showToast('Incorrect password', 'error')
@@ -163,7 +176,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
@@ -189,14 +201,50 @@ function LoadingScreen() {
 }
 
 // ── Rankings Tab ──────────────────────────────────────────────────────────────
-function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
-  const active = ranked.filter(p => p.played > 0)
+function RankingsTab({ ranked, totalTournaments, totalPlayers, settings }) {
+  const active   = ranked.filter(p => p.played > 0)
   const inactive = ranked.filter(p => p.played === 0)
+  const siteUrl  = window.location.origin
+  const nextDate = settings?.next_tournament_date || null
+  const nextName = settings?.next_tournament_name || 'Next Tournament'
+  const timeLeft = useCountdown(nextDate)
+
+  function shareWhatsApp() {
+    const champion = ranked[0]?.wins > 0 ? ranked[0].name : null
+    const topThree = active.slice(0, 3).map((p, i) => `${['🥇','🥈','🥉'][i]} ${p.name} — ${p.points}pts`).join('\n')
+    const msg = `🎱 *SidePocket Rankings* | Newcastle KZN\n\n${topThree ? topThree + '\n\n' : ''}Check the full live standings:\n${siteUrl}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+  }
 
   return (
     <div>
+
+      {/* Countdown */}
+      {nextDate && timeLeft && !timeLeft.expired && (
+        <div style={{ background: '#13110a', border: `1px solid ${C.goldDim}`, borderRadius: 4, padding: '16px 20px', marginBottom: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 9, letterSpacing: '0.25em', color: C.gold, marginBottom: 10 }}>NEXT TOURNAMENT</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#ddd', marginBottom: 12 }}>{nextName}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+            {[['DAYS', timeLeft.days], ['HRS', timeLeft.hours], ['MIN', timeLeft.minutes], ['SEC', timeLeft.seconds]].map(([label, val]) => (
+              <div key={label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: C.gold, fontVariantNumeric: 'tabular-nums', minWidth: 40 }}>
+                  {String(val).padStart(2, '0')}
+                </div>
+                <div style={{ fontSize: 8, letterSpacing: '0.15em', color: C.muted, marginTop: 2 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nextDate && timeLeft?.expired && (
+        <div style={{ background: '#13110a', border: `1px solid ${C.goldDim}`, borderRadius: 4, padding: '14px 20px', marginBottom: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 11, color: C.gold, letterSpacing: '0.1em' }}>🎱 {nextName} — happening now or results incoming</div>
+        </div>
+      )}
+
       {/* Stats bar */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
         {[['PLAYERS', totalPlayers], ['TOURNAMENTS', totalTournaments], ['CHAMPION', ranked[0]?.wins > 0 ? ranked[0]?.name.split(' ')[0] : '—']].map(([label, val]) => (
           <div key={label} style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, padding: '12px 10px', textAlign: 'center' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: label === 'CHAMPION' ? C.gold : '#fff' }}>{val}</div>
@@ -205,7 +253,7 @@ function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
         ))}
       </div>
 
-      {/* Podium — top 3 */}
+      {/* Podium */}
       {active.length >= 3 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'flex-end' }}>
           {[active[1], active[0], active[2]].map((p, i) => {
@@ -215,18 +263,14 @@ function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
               <div key={p.id} style={{
                 flex: 1, background: isFirst ? '#1a1500' : C.card,
                 border: `1px solid ${isFirst ? C.goldDim : C.border}`,
-                borderRadius: 4, padding: isFirst ? '20px 12px' : '14px 12px',
-                textAlign: 'center',
+                borderRadius: 4, padding: isFirst ? '20px 12px' : '14px 12px', textAlign: 'center',
               }}>
                 <div style={{ fontSize: isFirst ? 22 : 18, marginBottom: 6 }}>
                   {pos === 1 ? '🏆' : pos === 2 ? '🥈' : '🥉'}
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#ddd', marginBottom: 4 }}>
-                  {p.name.split(' ')[0]}
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ddd', marginBottom: 4 }}>{p.name.split(' ')[0]}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: rankColor(pos) }}>
-                  {p.points}
-                  <span style={{ fontSize: 9, color: C.muted, marginLeft: 2 }}>pts</span>
+                  {p.points}<span style={{ fontSize: 9, color: C.muted, marginLeft: 2 }}>pts</span>
                 </div>
               </div>
             )
@@ -234,12 +278,9 @@ function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
         </div>
       )}
 
-      {/* Section label */}
+      {/* Standings */}
       <div style={{ fontSize: 9, letterSpacing: '0.2em', color: C.muted, marginBottom: 10 }}>FULL STANDINGS</div>
-
-      {/* Table */}
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
-        {/* Header */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden', marginBottom: 20 }}>
         <div style={{ display: 'flex', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, background: C.dark }}>
           {[['#', 32], ['PLAYER', null], ['W', 36], ['P', 36], ['PTS', 44]].map(([label, w]) => (
             <div key={label} style={{ width: w, flex: w ? undefined : 1, fontSize: 8, letterSpacing: '0.2em', color: C.muted, textAlign: w && label !== 'PLAYER' ? 'center' : 'left' }}>
@@ -247,14 +288,13 @@ function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
             </div>
           ))}
         </div>
-
         {active.map((p, i) => (
           <div key={p.id} style={{
             display: 'flex', alignItems: 'center', padding: '12px 14px',
             borderBottom: `1px solid ${C.border}`,
             background: i % 2 === 0 ? C.card : '#0f0f0f',
           }}>
-            <div style={{ width: 32, fontSize: 11, fontWeight: 700, color: rankColor(i + 1), textAlign: 'left' }}>
+            <div style={{ width: 32, fontSize: 11, fontWeight: 700, color: rankColor(i + 1) }}>
               {i === 0 ? '🏆' : i + 1}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -266,13 +306,24 @@ function RankingsTab({ ranked, totalTournaments, totalPlayers }) {
             <div style={{ width: 44, textAlign: 'center', fontSize: 14, fontWeight: 700, color: C.gold }}>{p.points}</div>
           </div>
         ))}
-
         {active.length === 0 && (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: C.muted, fontSize: 12 }}>
             No results yet. Add tournament results in the Admin tab.
           </div>
         )}
       </div>
+
+      {/* WhatsApp Share */}
+      <button onClick={shareWhatsApp} style={{
+        width: '100%', padding: '14px', background: '#0d2b18',
+        border: `1px solid ${C.whatsapp}44`, borderRadius: 4,
+        color: C.whatsapp, fontSize: 12, fontWeight: 700,
+        letterSpacing: '0.1em', cursor: 'pointer', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', gap: 10,
+      }}>
+        <span style={{ fontSize: 18 }}>💬</span>
+        SHARE RANKINGS ON WHATSAPP
+      </button>
 
       {inactive.length > 0 && (
         <div style={{ marginTop: 20 }}>
@@ -300,13 +351,11 @@ function TournamentsTab({ tournaments }) {
       <div style={{ fontSize: 9, letterSpacing: '0.2em', color: C.muted, marginBottom: 16 }}>
         TOURNAMENT HISTORY — {tournaments.length} EVENTS
       </div>
-
       {tournaments.length === 0 && (
         <div style={{ padding: '60px 20px', textAlign: 'center', color: C.muted, fontSize: 12 }}>
           No tournaments recorded yet.
         </div>
       )}
-
       {tournaments.map((t, ti) => {
         const winner = t.results.find(r => r.finish === 'Winner')
         const sorted = [...t.results].sort((a, b) => (b.points || 0) - (a.points || 0))
@@ -344,20 +393,17 @@ function TournamentsTab({ tournaments }) {
   )
 }
 
-// ── Login Screen ──────────────────────────────────────────────────────────────
+// ── Login ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [pw, setPw] = useState('')
   return (
     <div style={{ maxWidth: 360, margin: '60px auto', textAlign: 'center' }}>
       <div style={{ fontSize: 24, color: C.gold, marginBottom: 16 }}>◈</div>
       <div style={{ fontSize: 13, letterSpacing: '0.15em', color: '#aaa', marginBottom: 24 }}>ADMIN ACCESS</div>
-      <input
-        type="password"
-        placeholder="Enter admin password"
-        value={pw}
+      <input type="password" placeholder="Enter admin password" value={pw}
         onChange={e => setPw(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && onLogin(pw)}
-        style={{ width: '100%', padding: '12px 16px', background: C.mid, border: `1px solid ${C.border2}`, color: '#ddd', fontSize: 14, borderRadius: 3, outline: 'none', marginBottom: 12, textAlign: 'center' }}
+        style={{ ...inputStyle, marginBottom: 12, textAlign: 'center' }}
         autoComplete="current-password"
       />
       <button onClick={() => onLogin(pw)} style={btnStyle}>ENTER</button>
@@ -366,13 +412,12 @@ function LoginScreen({ onLogin }) {
 }
 
 // ── Admin Tab ─────────────────────────────────────────────────────────────────
-function AdminTab({ players, results, onRefresh, showToast }) {
+function AdminTab({ players, results, settings, onRefresh, showToast }) {
   const [adminTab, setAdminTab] = useState('players')
-
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {[['players','Players'],['tournament','Record Tournament'],['delete','Delete']].map(([key,label]) => (
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
+        {[['players','Players'],['tournament','Record Tournament'],['upcoming','Next Tournament'],['delete','Delete']].map(([key,label]) => (
           <button key={key} onClick={() => setAdminTab(key)} style={{
             background: adminTab === key ? C.gold : C.card,
             color: adminTab === key ? C.black : C.muted,
@@ -382,10 +427,10 @@ function AdminTab({ players, results, onRefresh, showToast }) {
           }}>{label}</button>
         ))}
       </div>
-
-      {adminTab === 'players'    && <PlayersAdmin    players={players}   onRefresh={onRefresh} showToast={showToast} />}
-      {adminTab === 'tournament' && <TournamentAdmin players={players}   onRefresh={onRefresh} showToast={showToast} />}
-      {adminTab === 'delete'     && <DeleteAdmin     players={players}   results={results} onRefresh={onRefresh} showToast={showToast} />}
+      {adminTab === 'players'    && <PlayersAdmin    players={players} onRefresh={onRefresh} showToast={showToast} />}
+      {adminTab === 'tournament' && <TournamentAdmin players={players} onRefresh={onRefresh} showToast={showToast} />}
+      {adminTab === 'upcoming'   && <UpcomingAdmin   settings={settings} onRefresh={onRefresh} showToast={showToast} />}
+      {adminTab === 'delete'     && <DeleteAdmin     players={players} results={results} onRefresh={onRefresh} showToast={showToast} />}
     </div>
   )
 }
@@ -411,18 +456,16 @@ function PlayersAdmin({ players, onRefresh, showToast }) {
   return (
     <div>
       <div style={sectionLabel}>ADD PLAYER</div>
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         <input style={inputStyle} placeholder="Full name" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} />
         <div style={{ display: 'flex', gap: 10 }}>
           <select style={{ ...inputStyle, flex: 1 }} value={div} onChange={e => setDiv(e.target.value)}>
             {['Div 1','Div 2','Div 3','Unranked'].map(d => <option key={d}>{d}</option>)}
           </select>
-          <input style={{ ...inputStyle, width: 90 }} placeholder="Joined" value={joined} onChange={e => setJoined(e.target.value)} />
+          <input style={{ ...inputStyle, width: 90 }} placeholder="Joined (T1)" value={joined} onChange={e => setJoined(e.target.value)} />
         </div>
         <button style={btnStyle} onClick={addPlayer} disabled={saving}>{saving ? 'SAVING…' : 'ADD PLAYER'}</button>
       </div>
-
       <div style={sectionLabel}>CURRENT ROSTER — {players.length} PLAYERS</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {players.map(p => (
@@ -438,10 +481,10 @@ function PlayersAdmin({ players, onRefresh, showToast }) {
 
 // ── Tournament Admin ──────────────────────────────────────────────────────────
 function TournamentAdmin({ players, onRefresh, showToast }) {
-  const [tName,   setTName]   = useState('')
-  const [tDate,   setTDate]   = useState(new Date().toISOString().split('T')[0])
+  const [tName,    setTName]    = useState('')
+  const [tDate,    setTDate]    = useState(new Date().toISOString().split('T')[0])
   const [finishes, setFinishes] = useState({})
-  const [saving,  setSaving]  = useState(false)
+  const [saving,   setSaving]   = useState(false)
 
   useEffect(() => {
     const init = {}
@@ -455,9 +498,7 @@ function TournamentAdmin({ players, onRefresh, showToast }) {
     if (!tName.trim()) { showToast('Add a tournament name', 'error'); return }
     setSaving(true)
     const rows = players.map(p => ({
-      tournament_name: tName.trim(),
-      date: tDate,
-      player_name: p.name,
+      tournament_name: tName.trim(), date: tDate, player_name: p.name,
       finish: finishes[p.name] || 'Participant',
       points: FINISH_POINTS[finishes[p.name]] ?? 2,
     }))
@@ -476,28 +517,70 @@ function TournamentAdmin({ players, onRefresh, showToast }) {
         <input style={{ ...inputStyle, flex: 1, minWidth: 180 }} placeholder="Tournament name (e.g. Tournament 2)" value={tName} onChange={e => setTName(e.target.value)} />
         <input style={{ ...inputStyle, width: 155 }} type="date" value={tDate} onChange={e => setTDate(e.target.value)} />
       </div>
-
       <div style={sectionLabel}>SET EACH PLAYER'S FINISH</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
         {players.map(p => (
           <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: C.card, border: `1px solid ${C.border}`, borderRadius: 3 }}>
             <span style={{ flex: 1, fontSize: 13, color: '#bbb' }}>{p.name}</span>
-            <select
-              value={finishes[p.name] || 'Participant'}
-              onChange={e => setFinish(p.name, e.target.value)}
-              style={{ ...inputStyle, width: 140, padding: '6px 10px', fontSize: 11 }}
-            >
-              {FINISH_OPTIONS.map(o => (
-                <option key={o} value={o}>{o} (+{FINISH_POINTS[o]}pts)</option>
-              ))}
+            <select value={finishes[p.name] || 'Participant'} onChange={e => setFinish(p.name, e.target.value)}
+              style={{ ...inputStyle, width: 140, padding: '6px 10px', fontSize: 11 }}>
+              {FINISH_OPTIONS.map(o => <option key={o} value={o}>{o} (+{FINISH_POINTS[o]}pts)</option>)}
             </select>
           </div>
         ))}
       </div>
-
       <button style={btnStyle} onClick={saveTournament} disabled={saving}>
         {saving ? 'SAVING…' : 'SAVE & UPDATE RANKINGS'}
       </button>
+    </div>
+  )
+}
+
+// ── Upcoming Tournament Admin ─────────────────────────────────────────────────
+function UpcomingAdmin({ settings, onRefresh, showToast }) {
+  const [name, setName] = useState(settings?.next_tournament_name || '')
+  const [date, setDate] = useState(settings?.next_tournament_date || '')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    await Promise.all([
+      supabase.from('settings').upsert({ key: 'next_tournament_name', value: name }),
+      supabase.from('settings').upsert({ key: 'next_tournament_date', value: date }),
+    ])
+    setSaving(false)
+    showToast('Countdown updated!')
+    onRefresh()
+  }
+
+  async function clear() {
+    setSaving(true)
+    await Promise.all([
+      supabase.from('settings').upsert({ key: 'next_tournament_name', value: '' }),
+      supabase.from('settings').upsert({ key: 'next_tournament_date', value: '' }),
+    ])
+    setName('')
+    setDate('')
+    setSaving(false)
+    showToast('Countdown cleared')
+    onRefresh()
+  }
+
+  return (
+    <div>
+      <div style={sectionLabel}>SET NEXT TOURNAMENT COUNTDOWN</div>
+      <p style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+        This countdown appears on the Rankings page for all players to see.
+        Update it before each tournament. Clear it after.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        <input style={inputStyle} placeholder="Tournament name (e.g. Tournament 2)" value={name} onChange={e => setName(e.target.value)} />
+        <input style={inputStyle} type="datetime-local" value={date} onChange={e => setDate(e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button style={btnStyle} onClick={save} disabled={saving}>{saving ? 'SAVING…' : 'SET COUNTDOWN'}</button>
+        <button style={{ ...btnStyle, background: 'none', color: C.muted, border: `1px solid ${C.border}` }} onClick={clear}>CLEAR</button>
+      </div>
     </div>
   )
 }
@@ -511,9 +594,9 @@ function DeleteAdmin({ players, results, onRefresh, showToast }) {
   }, [results])
 
   async function deletePlayer(id, name) {
-    if (!window.confirm(`Remove ${name}? This will NOT delete their results.`)) return
+    if (!window.confirm(`Remove ${name}? Their results will stay on record.`)) return
     await supabase.from('players').delete().eq('id', id)
-    showToast(`${name} removed from roster`)
+    showToast(`${name} removed`)
     onRefresh()
   }
 
@@ -536,7 +619,6 @@ function DeleteAdmin({ players, results, onRefresh, showToast }) {
           </div>
         ))}
       </div>
-
       <div style={sectionLabel}>REMOVE PLAYER FROM ROSTER</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {players.map(p => (
