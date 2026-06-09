@@ -143,7 +143,7 @@ export default function App() {
               <img
                 src={LOGO_SRC}
                 alt="SidePocket"
-                style={{ height: 48, width: 'auto', display: 'block' }}
+                style={{ height: 48, width: 'auto', display: 'block', filter: 'brightness(0) invert(1)' }}
               />
             </div>
             <div style={{ fontSize: 9, letterSpacing: '0.2em', color: C.gold, border: `1px solid ${C.goldDim}`, padding: '4px 10px', borderRadius: 2 }}>
